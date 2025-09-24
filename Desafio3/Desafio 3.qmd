@@ -1,0 +1,52 @@
+---
+title: "Desafio 3"
+author: "Henry Honda"
+format: html
+---
+
+# Introdução
+
+Neste documento, apresentamos como carregar e visualizar datasets nos formatos **JSON** e **Parquet** usando R.
+
+------------------------------------------------------------------------
+
+# 1. Dados JSON
+
+Os dados JSON contêm informações sobre **doenças cardíacas**, com 3.000 linhas de pacientes. Cada linha representa um paciente com variáveis como idade, sexo, pressão arterial, colesterol, etc.
+
+**Fonte:** [Heart Disease Dataset no Kaggle](https://www.kaggle.com/datasets/pratyushpuri/heart-disease-dataset-3k-rows-python-code-2025)
+
+```{r}
+#Instalando biblioteca que permite ler arquivos JSON.
+library(jsonlite)
+
+# Lendo o arquivo JSON.
+json_arquivo <- fromJSON("Dados/heart_disease_dataset.json")
+
+# Visualizando os dados.
+head(json_arquivo)
+```
+
+# 2. Dados Parquet
+
+O Parquet é um formato binário eficiente para **armazenamento e leitura de grandes volumes de dados**, com compressão e otimização para análise em colunas.
+
+O exemplo abaixo usa dados sobre os **sobrviventes do Titanic**.
+
+**fonte:** <https://www.timestored.com/data/sample/parquet>
+
+```{r}
+# Instalando e carregando o pacote arrow, como foi desenvolvido pela APACHE devemos instalar bibliotecas externas ao padrão do R studio.
+
+install.packages("arrow", repos = c("https://apache.r-universe.dev", "https://cloud.r-project.org"))
+```
+
+```{r}
+library(arrow)
+
+# Lendo o arquivo Parquet
+parquet_dados <- read_parquet("Dados/titanic.parquet")
+
+# Visualizando os dados
+head(parquet_dados)
+```

@@ -1,0 +1,52 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r}
+library(readr)
+
+start_time <- Sys.time()
+
+unzip('flights.zip')
+
+dadosreadr<- read_csv('flights.csv.zip')
+
+end_time <- Sys.time()
+
+tempo_carregamento <- end_time - start_time
+
+print(tempo_carregamento)
+
+head(dadosreadr)
+```
+Time difference of 19.12769 secs
+
+```{r}
+start_time <- Sys.time()
+
+unzip('flights.zip')
+
+dadosbase <- read.csv('flights.csv.zip')
+
+end_time <- Sys.time()
+
+tempo_carregamento <- end_time - start_time
+
+print(tempo_carregamento)
+
+head(dadosbase)
+
+```
+Time difference of 57.79526 secs
+
+
+```{python}
+import time
+import pandas as pd
+ini = time.time()
+dados = pd.read_csv("flights.csv.zip", compression="zip", header=0, sep=",", low_memory=False)
+fim = time.time()
+fim - ini
+```
+

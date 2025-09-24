@@ -1,0 +1,189 @@
+---
+title: "Desafio2_ME315"
+format: html
+Name: Henry Honda
+---
+
+```{python}
+import pandas as pd
+import numpy as np
+import time
+import matplotlib.pyplot as plt
+import seaborn as sns
+import math
+
+# Funcao para filtrar os dados originais do dataset
+def get_stats(input_df):
+    # Lista de companhias aereas que queremos analisar
+    airlines_to_keep = ["AA", "DL", "UA", "US"]
+    
+    # Filtra apenas os voos das companhias selecionadas
+    # e remove linhas onde atraso ou data estao ausentes
+    filtered_df = input_df[
+        input_df['AIRLINE'].isin(airlines_to_keep) &
+        input_df['ARRIVAL_DELAY'].notna() &
+        input_df['MONTH'].notna() &
+        input_df['DAY'].notna()
+    ].copy()
+    
+    # Garante que mes e dia sejam inteiros (evita problemas na manipulacao de datas)
+    filtered_df['MONTH'] = filtered_df['MONTH'].astype(int)
+    filtered_df['DAY'] = filtered_df['DAY'].astype(int)
+    
+    return filtered_df
+
+# Funcao que agrega os dados filtrados e calcula percentual de voos atrasados
+def compute_stats(stats_df):
+    final_df = stats_df.copy()
+    
+    # Cria uma coluna de data completa (ano fixo em 2008) para cada voo
+    final_df['Data'] = pd.to_datetime(
+        pd.DataFrame({'year': 2008, 'month': final_df['MONTH'], 'day': final_df['DAY']})
+    )
+    
+    # Calcula o percentual de voos atrasados por dia
+    final_df['Perc'] = final_df['n_atrasados'] / final_df['n_total']
+    
+    # Renomeia coluna de companhia aerea para algo mais intuitivo
+    final_df = final_df.rename(columns={'AIRLINE': 'Cia'})
+    
+    # Retorna apenas as colunas necessarias para visualizacao
+    return final_df[['Cia', 'Data', 'Perc']]
+
+# Funcao que organiza os dados para o calendario mensal
+def prepare_calendar_data(stats, airline_code):
+    # Filtra os dados apenas para a companhia desejada
+    airline_data = stats[stats['Cia'] == airline_code].copy()
+    
+    # Calcula dia da semana, mes e dia do mes
+    airline_data['day_of_week'] = airline_data['Data'].dt.dayofweek
+    airline_data['month'] = airline_data['Data'].dt.month
+    airline_data['day'] = airline_data['Data'].dt.day
+    
+    # Descobre o primeiro dia do mes de cada voo
+    first_day_of_month = airline_data['Data'] - pd.to_timedelta(airline_data['day'] - 1, unit='d')
+    
+    # Descobre qual o dia da semana do primeiro dia do mes
+    first_weekday = first_day_of_month.dt.dayofweek
+    
+    # Calcula a semana do mes para cada dia
+    airline_data['week_of_month'] = (airline_data['day'] + first_weekday - 1) // 7
+    
+    return airline_data
+
+# Funcao que gera o mapa de calor estilo calendario
+def create_calendar_heatmap(calendar_data, title):
+    # Cria um dicionario com abreviacoes dos meses
+    month_names = {i: name for i, name in enumerate(pd.date_range(start='2008-01-01', periods=12, freq='MS').strftime('%b'), 1)}
+    
+    # Rotulos dos dias da semana (comecando no domingo)
+    day_labels = ["S", "T", "Q", "Q", "S", "S", "D"]
+    
+    # Cria figura com subplots (3 linhas x 4 colunas, 12 meses)
+    fig, axes = plt.subplots(3, 4, figsize=(16, 10))
+    
+    # Titulo geral da figura
+    fig.suptitle(title, fontsize=16, fontweight='bold', y=0.98)
+    
+    # Escolhe paleta de cores para o heatmap
+    color_palette = 'viridis'
+    
+    # Itera sobre cada subplot (cada mes)
+    for i, ax in enumerate(axes.flat):
+        month = i + 1
+        ax.set_title(month_names[month], fontsize=12, fontweight='bold')
+        
+        # Filtra dados apenas do mes atual
+        month_data = calendar_data[calendar_data['month'] == month]
+        
+        if not month_data.empty:
+            # Cria tabela para o heatmap: linhas = semana do mes, colunas = dia da semana
+            pivot_table = month_data.pivot_table(
+                values='Perc', 
+                index='week_of_month', 
+                columns='day_of_week'
+            )
+            
+            # Desenha o heatmap
+            sns.heatmap(
+                pivot_table, ax=ax, cmap=color_palette, linewidths=.5,
+                linecolor='white', cbar=False, vmin=0, vmax=1
+            )
+        
+        # Remove labels dos eixos
+        ax.set_xlabel('')
+        ax.set_ylabel('')
+        ax.set_xticklabels(day_labels)
+        ax.tick_params(axis='y', left=False, labelleft=False)
+        ax.set_facecolor('lightgrey')
+    
+    # Cria barra de cores (legenda)
+    cbar_ax = fig.add_axes([0.92, 0.25, 0.02, 0.5])
+    sm = plt.cm.ScalarMappable(cmap=color_palette, norm=plt.Normalize(vmin=0, vmax=1))
+    sm.set_array([])
+    fig.colorbar(sm, cax=cbar_ax, label='% Atrasos')
+    
+    # Ajusta espacamento entre os subplots
+    fig.subplots_adjust(hspace=0.5, wspace=0.1)
+    
+    # Mostra o grafico final
+    plt.show()
+
+# Funcao principal que controla todo o fluxo do script
+def main():
+    # Colunas que vamos utilizar do CSV
+    cols_of_interest = ['AIRLINE', 'ARRIVAL_DELAY', 'MONTH', 'DAY']
+    
+    # Lista para armazenar os pedaços do CSV processados
+    filtered_data_list = []
+    
+    print("Iniciando a leitura e processamento do arquivo 'flights.csv.zip'...")
+    start_time = time.time()
+    
+    # Leitura do CSV em pedacos (chunks) para nao sobrecarregar memoria
+    try:
+        chunk_iterator = pd.read_csv(
+            "flights.csv.zip", chunksize=100000, usecols=cols_of_interest, compression='zip'
+        )
+    except FileNotFoundError:
+        print("\nERRO: O arquivo 'flights.csv.zip' nao foi encontrado.")
+        print("Por favor, certifique-se de que o arquivo esta no mesmo diretorio que o script.")
+        return
+    
+    # Processa cada pedaco do CSV
+    for i, chunk in enumerate(chunk_iterator):
+        print(f"Processando chunk {i+1}...")
+        filtered_chunk = get_stats(chunk)  # Filtra dados relevantes
+        filtered_data_list.append(filtered_chunk)
+    
+    # Junta todos os pedacos filtrados em um unico DataFrame
+    print("Concatenando chunks processados...")
+    clean_data = pd.concat(filtered_data_list, ignore_index=True)
+    
+    # Agrupa por dia/mes/companhia e calcula numero total e numero de atrasos (>10min)
+    print("Agregando estatisticas...")
+    sufficient_stats = clean_data.groupby(['DAY', 'MONTH', 'AIRLINE']).agg(
+        n_total=('AIRLINE', 'size'),
+        n_atrasados=('ARRIVAL_DELAY', lambda x: (x > 10).sum())
+    ).reset_index()
+    
+    end_time = time.time()
+    print(f"\nTempo de processamento dos dados: {round(end_time - start_time, 2)} segundos\n")
+    
+    # Calcula percentual de atrasos e prepara dados finais
+    final_stats = compute_stats(sufficient_stats)
+    
+    # Para cada companhia aerea, gera o mapa de calor em calendario
+    airlines = final_stats['Cia'].unique()
+    for airline in airlines:
+        print(f"Gerando mapa de calor para a companhia {airline}...")
+        cal_data = prepare_calendar_data(final_stats, airline)
+        create_calendar_heatmap(cal_data, f"Mapa de Calor - Companhia {airline}")
+    
+    print("\nAnalise concluida.")
+
+# Executa a funcao principal
+if __name__ == "__main__":
+    main()
+
+```

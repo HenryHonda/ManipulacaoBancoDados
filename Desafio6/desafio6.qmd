@@ -1,0 +1,124 @@
+---
+title: "Desafio 6"
+output: pdf_document
+---
+
+```{r}
+getwd()
+```
+
+```{r}
+# Define o caminho para a pasta dos dados e para o arquivo do banco
+
+path = 'dados'
+fname = file.path(path, 'disco.db')
+```
+
+```{r}
+# Carrega a biblioteca do SQLite e conecta ao banco de dados
+
+library(RSQLite)
+conn = dbConnect(SQLite(), fname)
+```
+
+```{r}
+# Lista todas as tabelas disponíveis no banco de dados
+
+dbListTables(conn)
+
+```
+
+```{r}
+# Mostra os campos/colunas da tabela 'customers'
+  
+dbListFields(conn, 'customers')
+```
+
+```{r}
+# Conta quantos clientes existem na tabela 'customers'
+
+dbGetQuery(conn, 'SELECT COUNT(*) FROM customers')
+```
+
+```{r}
+# Conta quantos países diferentes existem na tabela 'customers'
+
+dbGetQuery(conn, 'SELECT COUNT(*) FROM (SELECT DISTINCT country FROM customers)')
+```
+
+```{r}
+# Mostra o número de clientes por país, em ordem decrescente
+
+dbGetQuery(conn, 'SELECT DISTINCT country, COUNT(*) FROM customers GROUP BY country ORDER BY COUNT(*) DESC')
+```
+
+```{r}
+# Mostra os 5 países com maior número de clientes
+
+dbGetQuery(conn, 'SELECT DISTINCT country, COUNT(*) FROM customers GROUP BY country ORDER BY COUNT(*) DESC LIMIT 5')
+```
+
+```{r}
+# Lista países com nomes de 6 letras
+
+dbGetQuery(conn, "SELECT DISTINCT country FROM customers WHERE country GLOB '??????'")
+```
+
+```{r}
+# Lista nomes de faixas compradas por clientes do Brasil
+
+sql = paste("SELECT DISTINCT name FROM invoice_items",
+            "INNER JOIN tracks ON tracks.trackid=invoice_items.trackid",
+            "WHERE invoiceid IN",
+            "(SELECT DISTINCT invoiceid FROM customers",
+            "INNER JOIN invoices ON invoices.customerid=customers.customerid",
+            "WHERE country='Brazil')")
+dbGetQuery(conn, sql)
+```
+
+```{r}
+# Mostra o álbum mais tocado em cada país
+
+sql = "SELECT country, title FROM (
+  SELECT
+    c.country,
+    a.title,
+    COUNT(*) AS play_count
+  FROM customers c
+    JOIN invoices i ON c.customerid = i.customerid
+    JOIN invoice_items ii ON i.invoiceid = ii.invoiceid
+    JOIN tracks t ON ii.trackid = t.trackid
+    JOIN albums a ON t.albumid = a.albumid
+  GROUP BY c.country, a.title
+  ORDER BY c.country, play_count DESC) 
+  GROUP BY country"
+dbGetQuery(conn, sql)
+
+```
+
+```{r}
+# Mostra o artista mais tocado em cada país
+
+sql = "SELECT country, name FROM (
+  SELECT
+    c.country,
+    ar.name,
+    COUNT(*) AS play_count
+  FROM customers c
+    JOIN invoices i ON c.customerid = i.customerid
+    JOIN invoice_items ii ON i.invoiceid = ii.invoiceid
+    JOIN tracks t ON ii.trackid = t.trackid
+    JOIN albums a ON t.albumid = a.albumid
+    JOIN artists ar ON a.artistid = ar.artistid
+  GROUP BY c.country, ar.name
+  ORDER BY c.country, play_count DESC) 
+  GROUP BY country"
+dbGetQuery(conn, sql)
+
+```
+
+```{r, echo=TRUE}
+# Fecha a conexão com o banco de dados
+
+dbDisconnect(conn)
+```
