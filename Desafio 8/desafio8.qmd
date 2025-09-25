@@ -1,0 +1,160 @@
+---
+title: "Desafio 8"
+format: html
+---
+
+```{r}
+library(RSQLite)
+conn = dbConnect(SQLite(), 'database.sqlite3')
+```
+
+```{r}
+query_professores_stat <- "
+SELECT DISTINCT i.name AS professor
+FROM instructors i
+INNER JOIN teachings t ON i.id = t.instructor_id
+INNER JOIN sections s ON t.section_uuid = s.uuid
+INNER JOIN subject_memberships sm ON sm.course_offering_uuid = s.course_offering_uuid
+INNER JOIN subjects sub ON sm.subject_code = sub.code
+WHERE sub.abbreviation = 'STAT';
+"
+
+professores_stat <- dbGetQuery(conn, query_professores_stat)
+print(professores_stat)  # printando resultados
+```
+
+```{r}
+query_count_professores_stat <- "
+SELECT COUNT(DISTINCT i.name) AS num_professores
+FROM instructors i
+INNER JOIN teachings t ON i.id = t.instructor_id
+INNER JOIN sections s ON t.section_uuid = s.uuid
+INNER JOIN subject_memberships sm ON sm.course_offering_uuid = s.course_offering_uuid
+INNER JOIN subjects sub ON sm.subject_code = sub.code
+WHERE sub.abbreviation = 'STAT';
+"
+
+num_professores_stat <- dbGetQuery(conn, query_count_professores_stat)
+print(num_professores_stat)
+```
+
+```{r}
+get_professor_by_gpa <- function(conn, type = c("min", "max")) {
+  type <- match.arg(type)
+  query <- sprintf("
+WITH gpa_calculations AS (
+  SELECT co.uuid AS course_offering_uuid,
+         (CAST(gd.a_count AS INTEGER)*4 + CAST(gd.ab_count AS INTEGER)*3.5 +
+          CAST(gd.b_count AS INTEGER)*3 + CAST(gd.bc_count AS INTEGER)*2.5 +
+          CAST(gd.c_count AS INTEGER)*2 + CAST(gd.d_count AS INTEGER)*1 +
+          CAST(gd.f_count AS INTEGER)*0) /
+         NULLIF((CAST(gd.a_count AS INTEGER) + CAST(gd.ab_count AS INTEGER) +
+                 CAST(gd.b_count AS INTEGER) + CAST(gd.bc_count AS INTEGER) +
+                 CAST(gd.c_count AS INTEGER) + CAST(gd.d_count AS INTEGER) +
+                 CAST(gd.f_count AS INTEGER)), 0) AS gpa
+  FROM course_offerings co
+  JOIN grade_distributions gd ON co.uuid = gd.course_offering_uuid
+  JOIN subject_memberships sm ON co.uuid = sm.course_offering_uuid
+  JOIN subjects sub ON sm.subject_code = sub.code
+  WHERE sub.abbreviation = 'STAT'
+    AND (CAST(gd.a_count AS INTEGER) + CAST(gd.ab_count AS INTEGER) +
+         CAST(gd.b_count AS INTEGER) + CAST(gd.bc_count AS INTEGER) +
+         CAST(gd.c_count AS INTEGER) + CAST(gd.d_count AS INTEGER) +
+         CAST(gd.f_count AS INTEGER)) > 0
+),
+professor_gpas AS (
+  SELECT i.id, i.name AS professor,
+         AVG(gc.gpa) AS gpa_medio,
+         COUNT(DISTINCT gc.course_offering_uuid) AS num_disciplinas
+  FROM gpa_calculations gc
+  JOIN sections s ON gc.course_offering_uuid = s.course_offering_uuid
+  JOIN teachings t ON s.uuid = t.section_uuid
+  JOIN instructors i ON t.instructor_id = i.id
+  WHERE gc.gpa IS NOT NULL
+  GROUP BY i.id, i.name
+  HAVING COUNT(DISTINCT gc.course_offering_uuid) >= 1
+),
+agg_gpa AS (
+  SELECT %s(gpa_medio) AS gpa_medio_val FROM professor_gpas
+)
+SELECT pg.professor,
+       ROUND(pg.gpa_medio,4) AS gpa_medio,
+       pg.num_disciplinas
+FROM professor_gpas pg
+JOIN agg_gpa ag ON pg.gpa_medio = ag.gpa_medio_val
+ORDER BY pg.professor;
+", ifelse(type == "min", "MIN", "MAX"))
+  
+  dbGetQuery(conn, query)
+}
+
+professor_dificil <- get_professor_by_gpa(conn, "min")
+professor_facil <- get_professor_by_gpa(conn, "max")
+
+print(professor_dificil)
+print(professor_facil)
+```
+
+```{}
+```
+
+```{r}
+get_course_by_gpa <- function(conn, type = c("min", "max")) {
+  type <- match.arg(type)
+  query <- sprintf("
+WITH gpa_calculations AS (
+  SELECT co.uuid AS course_offering_uuid,
+         co.course_uuid AS course_uuid,
+         (CAST(gd.a_count AS INTEGER)*4 + CAST(gd.ab_count AS INTEGER)*3.5 +
+          CAST(gd.b_count AS INTEGER)*3 + CAST(gd.bc_count AS INTEGER)*2.5 +
+          CAST(gd.c_count AS INTEGER)*2 + CAST(gd.d_count AS INTEGER)*1 +
+          CAST(gd.f_count AS INTEGER)*0) /
+         NULLIF((CAST(gd.a_count AS INTEGER) + CAST(gd.ab_count AS INTEGER) +
+                 CAST(gd.b_count AS INTEGER) + CAST(gd.bc_count AS INTEGER) +
+                 CAST(gd.c_count AS INTEGER) + CAST(gd.d_count AS INTEGER) +
+                 CAST(gd.f_count AS INTEGER)), 0) AS gpa
+  FROM course_offerings co
+  JOIN grade_distributions gd ON co.uuid = gd.course_offering_uuid
+  JOIN subject_memberships sm ON co.uuid = sm.course_offering_uuid
+  JOIN subjects sub ON sm.subject_code = sub.code
+  WHERE sub.abbreviation = 'STAT'
+    AND (CAST(gd.a_count AS INTEGER) + CAST(gd.ab_count AS INTEGER) +
+         CAST(gd.b_count AS INTEGER) + CAST(gd.bc_count AS INTEGER) +
+         CAST(gd.c_count AS INTEGER) + CAST(gd.d_count AS INTEGER) +
+         CAST(gd.f_count AS INTEGER)) > 0
+),
+course_gpas AS (
+  SELECT c.number AS course_number,
+         c.name AS course_name,
+         AVG(gc.gpa) AS gpa_medio,
+         COUNT(DISTINCT gc.course_offering_uuid) AS num_ofertas
+  FROM gpa_calculations gc
+  JOIN courses c ON gc.course_uuid = c.uuid
+  WHERE gc.gpa IS NOT NULL
+  GROUP BY c.number, c.name
+  HAVING COUNT(DISTINCT gc.course_offering_uuid) >= 1
+),
+agg_gpa AS (
+  SELECT %s(gpa_medio) AS gpa_val FROM course_gpas
+)
+SELECT cg.course_number,
+       cg.course_name,
+       ROUND(cg.gpa_medio,4) AS gpa_medio,
+       cg.num_ofertas
+FROM course_gpas cg
+JOIN agg_gpa ag ON cg.gpa_medio = ag.gpa_val;
+", ifelse(type == "min", "MIN", "MAX"))
+  
+  dbGetQuery(conn, query)
+}
+
+disciplina_dificil <- get_course_by_gpa(conn, "min")
+disciplina_facil <- get_course_by_gpa(conn, "max")
+
+print(disciplina_dificil)
+print(disciplina_facil)
+```
+
+```{r}
+dbDisconnect(conn)
+```
