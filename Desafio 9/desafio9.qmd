@@ -1,0 +1,68 @@
+---
+title: "desafio9"
+format: html
+editor: visual
+---
+
+```{r}
+message("Script compilado/executado em: ", Sys.time())
+
+```
+
+```{r criaBD}
+library(RSQLite)
+
+# Diretório relativo
+path <- "desafio9"
+if(!dir.exists(path)) dir.create(path)
+
+# Conexão
+fname <- file.path(path, "voos.sqlite3")
+conn <- dbConnect(SQLite(), fname)
+
+```
+
+```{r}
+library(readr)
+
+# Leitura CSV
+airlines <- read_csv(file.path(path, "airlines.csv"))
+airports <- read_csv(file.path(path, "airports.csv"))
+
+# Sobrescreve tabelas se já existirem
+dbWriteTable(conn, "airlines", airlines, overwrite = TRUE)
+dbWriteTable(conn, "airports", airports, overwrite = TRUE)
+```
+
+```{r}
+pos = 1000
+message("Leitura atingiu a linha ", pos)
+```
+
+```{r}
+lerDados = function(input, pos){
+  tmp = input %>% filter(DESTINATION_AIRPORT %in% c('BWI', 'MIA', 'SEA', 'SFO', 'JFK') | ORIGIN_AIRPORT %in% c('BWI', 'MIA', 'SEA', 'SFO', 'JFK'))
+  message("Leitura atingiu a linha ", pos)
+  dbWriteTable(conn, "flights", tmp, append=TRUE)
+}
+```
+
+```{r}
+library(tidyverse)
+fname = file.path(path, "flights.csv")
+out = read_csv_chunked(fname, chunk_size = 1e5, callback=SideEffectChunkCallback$new(lerDados),
+                 col_types = cols_only(YEAR='i', MONTH='i', DAY='i', AIRLINE='c',
+                                       FLIGHT_NUMBER='i', ORIGIN_AIRPORT='c',
+                                       DESTINATION_AIRPORT='c', ARRIVAL_DELAY='i'))
+```
+
+```{r}
+dbGetQuery(conn,
+           "SELECT DESTINATION_AIRPORT, AIRPORT, airlines.AIRLINE, AVG(ARRIVAL_DELAY) AS atraso FROM flights
+           INNER JOIN airports
+           ON flights.DESTINATION_AIRPORT=airports.IATA_CODE
+           INNER JOIN airlines
+           ON flights.AIRLINE=airlines.IATA_CODE
+           GROUP BY DESTINATION_AIRPORT, flights.AIRLINE
+           ORDER BY atraso DESC")
+```
