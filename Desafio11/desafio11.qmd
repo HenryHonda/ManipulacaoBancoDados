@@ -1,0 +1,120 @@
+---
+title: "Desafio11"
+format: html
+editor: visual
+---
+
+```{r}
+reticulate::py_install("polars")
+reticulate::py_install("pyarrow")
+
+```
+
+```{r}
+# Registro da data e hora de compilação
+cat("Arquivo compilado em:", format(Sys.time(), "%d/%m/%Y às %H:%M:%S"), "\n")
+
+```
+
+```{r}
+library(reticulate)
+
+pl <- import("polars")
+
+```
+
+```{r}
+# Nomes das colunas
+colunas <- c(
+  "age", "workclass", "fnlwgt", "education", "education_num",
+  "marital_status", "occupation", "relationship", "race", "sex",
+  "capital_gain", "capital_loss", "hours_per_week", "native_country", "income"
+)
+
+# Ler CSV sem cabeçalho, com valores faltantes representados por "?"
+renda <- pl$read_csv(
+  "renda_adulta.csv",
+  has_header = FALSE,
+  new_columns = colunas,
+  null_values = "?"
+)
+
+renda$head()
+```
+
+```{r}
+renda$dtypes
+```
+
+```{r}
+renda$shape
+```
+
+```{r}
+renda$group_by("income")$count()
+```
+
+```{r}
+# Converter para pandas primeiro
+renda_df <- renda$select(
+  pl$col("capital_gain"), pl$col("capital_loss")
+)$to_pandas()
+
+# Usar tidyr no R para pivotar
+library(tidyr)
+renda_longo <- renda_df |>
+  pivot_longer(
+    cols = everything(),
+    names_to = "tipo",
+    values_to = "valor"
+  )
+
+head(renda_longo)
+
+```
+
+```{r}
+renda$group_by("income")$agg(
+  pl$col("hours_per_week")$mean()$alias("media_horas")
+)
+```
+
+```{r}
+renda$group_by("occupation")$count()
+```
+
+```{r}
+library(ggplot2)
+
+media_horas <- renda$group_by("income")$agg(
+  pl$col("hours_per_week")$mean()$alias("media_horas")
+)$to_pandas()
+
+ggplot(media_horas, aes(x = income, y = media_horas, fill = income)) +
+  geom_col() +
+  labs(
+    title = "Média de Horas Trabalhadas por Classe Salarial",
+    x = "Classe Salarial",
+    y = "Média de Horas Semanais"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+renda_genero <- renda$group_by("sex", "income")$count()$to_pandas()
+
+renda_genero <- renda_genero %>%
+  dplyr::group_by(sex) %>%
+  dplyr::mutate(proporcao = count / sum(count))
+
+ggplot(renda_genero, aes(x = sex, y = proporcao, fill = income)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Proporção de Renda (>50k e ≤50k) por Gênero",
+    x = "Sexo",
+    y = "Proporção"
+  ) +
+  theme_minimal()
+
+```
