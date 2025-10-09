@@ -2,6 +2,8 @@
 title: "lab 12"
 format: html
 editor: visual
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r}
@@ -15,6 +17,8 @@ import sqlite3
 ```
 
 ```{python}
+#| eval: false
+#| include: false
 #| echo: false
 !rm data.db
 ```
@@ -26,13 +30,13 @@ cursor = conn.cursor()
 
 ```{python}
 cursor.execute('''
-CREATE TABLE vendas (
-    id INTEGER PRIMARY KEY,
-    vendedor TEXT,
-    produto TEXT,
-    valor REAL,
-    data_venda DATE
-)
+CREATE TABLE IF NOT EXISTS vendas (
+  id INTEGER PRIMARY KEY,
+  vendedor TEXT,
+  produto TEXT,
+  valor REAL,
+  data_venda DATE
+);
 ''')
 ```
 
@@ -157,6 +161,8 @@ print(lucro_medio)
 ```
 
 ```{python}
+#| eval: false
+#| include: false
 #| echo: false
 !rm data.db
 ```
