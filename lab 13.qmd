@@ -1,0 +1,81 @@
+---
+title: "lab 13"
+format: html
+editor: visual
+editor_options: 
+chunk_output_type: console
+---
+
+```{r}
+#| include: false
+#| eval: false
+library(RSQLite)
+library(readr)
+
+conn = dbConnect(SQLite(), "movies.sqlite3")
+
+# Read and write in chunks
+read_tsv_chunked(
+  "title.basics0.tsv",
+  DataFrameCallback$new(function(chunk, pos) {
+    dbWriteTable(conn, "basics", chunk, append = (pos > 1), overwrite = (pos == 1))
+  }),
+  chunk_size = 50000,
+  na = "\\N"
+)
+
+read_tsv_chunked(
+  "title.ratings.tsv",
+  DataFrameCallback$new(function(chunk, pos) {
+    dbWriteTable(conn, "ratings", chunk, append = (pos > 1), overwrite = (pos == 1))
+  }),
+  chunk_size = 50000,
+  na = "\\N"
+)
+
+read_tsv_chunked(
+  "title.principals0.tsv",
+  DataFrameCallback$new(function(chunk, pos) {
+    dbWriteTable(conn, "principals", chunk, append = (pos > 1), overwrite = (pos == 1))
+  }),
+  chunk_size = 50000,
+  na = "\\N"
+)
+
+dbDisconnect(conn)
+```
+
+```{python}
+#| include: false
+import polars as pl
+import sqlite3
+conn = sqlite3.connect("movies.sqlite3")
+```
+
+```{python}
+#| include: false
+pl.read_database("""
+   SELECT primaryTitle, averageRating, numVotes FROM ratings
+   INNER JOIN basics
+   ON ratings.tconst = basics.tconst
+   ORDER BY averageRating DESC, numVotes DESC
+   LIMIT 5
+""", conn)
+```
+
+```{python}
+#| include: false
+pl.read_database("""
+   SELECT genres, COUNT(*) AS n FROM ratings
+   INNER JOIN basics
+   ON ratings.tconst = basics.tconst
+   WHERE averageRating > 8
+   GROUP BY genres
+   ORDER BY n DESC
+   LIMIT 5
+""", conn)
+```
+
+```{r}
+reticulate::py_install("polars")
+```
